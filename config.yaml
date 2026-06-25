@@ -1,0 +1,9 @@
+grid_size: [5, 5]
+max_moves: 25
+num_games: 6
+max_barriers: 5
+scoring:
+  cop_win: 20
+  thief_win: 10
+  cop_loss: 5
+  thief_loss: 5
