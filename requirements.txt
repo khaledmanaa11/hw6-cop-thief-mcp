@@ -1,2 +1,4 @@
 pyyaml
 pytest
+fastmcp
+pytest-asyncio

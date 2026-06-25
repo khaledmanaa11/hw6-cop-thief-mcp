@@ -7,3 +7,10 @@ scoring:
   thief_win: 10
   cop_loss: 5
   thief_loss: 5
+servers:
+  cop:
+    host: "127.0.0.1"
+    port: 8001
+  thief:
+    host: "127.0.0.1"
+    port: 8002

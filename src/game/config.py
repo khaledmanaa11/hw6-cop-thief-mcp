@@ -11,12 +11,25 @@ class ScoringConfig:
 
 
 @dataclass
+class ServerEndpoint:
+    host: str
+    port: int
+
+
+@dataclass
+class ServersConfig:
+    cop: ServerEndpoint
+    thief: ServerEndpoint
+
+
+@dataclass
 class Config:
     grid_size: tuple[int, int]
     max_moves: int
     num_games: int
     max_barriers: int
     scoring: ScoringConfig
+    servers: ServersConfig | None = None
 
 
 def load_config(path: str) -> Config:
@@ -51,10 +64,26 @@ def load_config(path: str) -> Config:
         thief_loss=s["thief_loss"],
     )
 
+    servers = None
+    if "servers" in data:
+        sv = data["servers"]
+
+        def _endpoint(d):
+            host = d["host"]
+            port = d["port"]
+            if not host:
+                raise ValueError("server host must be non-empty")
+            if not (1 <= port <= 65535):
+                raise ValueError(f"server port out of range: {port}")
+            return ServerEndpoint(host=host, port=port)
+
+        servers = ServersConfig(cop=_endpoint(sv["cop"]), thief=_endpoint(sv["thief"]))
+
     return Config(
         grid_size=(gs[0], gs[1]),
         max_moves=max_moves,
         num_games=num_games,
         max_barriers=max_barriers,
         scoring=scoring,
+        servers=servers,
     )
