@@ -24,7 +24,7 @@ Build a config-driven engine that can execute a full 6-sub-game series end-to-en
 - **FR5** — A sub-game that reaches `max_moves` plies without capture ends as a Thief win.
 - **FR6** — The Cop may place a barrier instead of moving, barriers are impassable to both players, and the Cop may not exceed `max_barriers` per sub-game.
 - **FR7** — The engine must remain pure Python with no MCP, networking, or LLM logic inside this step.
-- **FR8** — `play_series` must run `num_games` sub-games and aggregate the total Cop and Thief scores.
+- **FR8** — `play_series` must run `num_games` sub-games between two **groups**, swapping Cop/Thief roles each sub-game so each group plays Cop in half and Thief in half, and aggregate **each group's** total (its Cop points + its Thief points) — per §4.4.
 
 ## 5. Non-functional requirements
 - **NFR1 — config-driven:** all game parameters must be read from `config.yaml`.
@@ -38,14 +38,14 @@ Build a config-driven engine that can execute a full 6-sub-game series end-to-en
 **Out of scope:** MCP server infrastructure → step 2, local orchestration wiring → step 3, decision/strategy brain → step 4, natural-language agent messaging → step 5, graphical UI → step 6, cloud deployment → step 7, Gmail JSON reporting → step 8.
 
 ## 7. Acceptance criteria
-1. `play_series` runs end-to-end on the default 5×5 config with two `RandomMover` instances and returns a `SeriesResult` containing 6 sub-game results and accumulated totals.
+1. `play_series` runs end-to-end on the default 5×5 config with two group `RandomMover` instances and returns a `SeriesResult` containing 6 sub-game results and each group's accumulated total.
 2. The same code runs unchanged on 2×2, 3×3, 4×4, and 5×5 grids.
 3. A Cop move that lands on the Thief ends the sub-game with Cop score `scoring.cop_win` and Thief score `scoring.thief_loss`.
 4. A sub-game that reaches `max_moves` plies ends with Thief score `scoring.thief_win` and Cop score `scoring.cop_loss`.
 5. Cop barrier placement renders a cell impassable to both players, consumes the Cop's turn, and is limited by `max_barriers` per sub-game.
 6. Illegal out-of-bounds or barrier-cell moves are rejected.
 7. No hard-coded game parameters appear in engine code; all values come from `config.yaml`.
-8. Series totals respect the 90-max / 30-min bound from §4.4.
+8. Because roles swap each sub-game, each group's series total respects the 90-max / 30-min bound from §4.4.
 
 ## 8. Dependencies
 - **Upstream (needs):** none — this is the first step.

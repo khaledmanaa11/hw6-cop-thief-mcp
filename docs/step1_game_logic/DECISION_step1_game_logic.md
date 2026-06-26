@@ -53,7 +53,7 @@ through a pluggable interface. This is the foundation every later step plugs int
 - **Exposes to later steps:**
   - `choose_move(state) -> Move` — the interface MCP agents (step 3) and the decision brain (step 4) implement.
   - `GameState` snapshot — what a mover reads to decide.
-  - `SubGameResult` / `SeriesResult` — structured outcome objects (winner, per-side scores, move count) consumed by the GUI (step 6) and the JSON email (step 8).
+  - `SubGameResult` (winner role, per-role scores, move count, and which group played each role) / `SeriesResult` (per-game results + each group's total) — consumed by the GUI (step 6) and the JSON email (step 8).
   - `config.yaml` schema — the parameter contract all steps share.
 - **Touches config keys:** `grid_size`, `max_moves`, `num_games`, `max_barriers`, `scoring.cop_win`, `scoring.thief_win`, `scoring.cop_loss`, `scoring.thief_loss`.
 
@@ -105,6 +105,7 @@ through a pluggable interface. This is the foundation every later step plugs int
 - **Q:** Capture condition? → **A:** Cop occupies the **exact same cell** as the Thief (§4.3).
 - **Q:** Barriers? → **A:** Cop only; placed on the Cop's **current cell** as an alternative to moving (consumes the turn); cell becomes impassable to **both**; **max 5** per sub-game (§4.3).
 - **Q:** Config format / move source? → **A:** `config.yaml`; pluggable `choose_move(state)` move provider with a `RandomMover` placeholder.
+- **Q:** How does the 6-sub-game series score map to the §4.4 "90 max / 30 min per group"? → **A:** (resolved post-build) The two **groups swap Cop/Thief roles** every sub-game — each plays Cop 3× and Thief 3× — and a group's series total is its Cop points + its Thief points. `play_series(config, group_a, group_b)` implements this. Without the swap, a fixed-role side could reach 120, violating the 90 bound.
 - **Still open (note for Builder):** none — all rules sourced.
 
 ## 10. Notes for the Builder session

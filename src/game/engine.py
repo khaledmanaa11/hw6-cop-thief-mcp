@@ -6,17 +6,19 @@ from src.game.rules import is_capture, is_timeout, score_sub_game
 
 @dataclass
 class SubGameResult:
-    winner: str
+    winner: str            # "COP" or "THIEF" — which ROLE won this sub-game
     cop_score: int
     thief_score: int
     moves_used: int
+    cop_group: str = ""    # which GROUP ("A"/"B") played Cop this sub-game
+    thief_group: str = ""  # which GROUP ("A"/"B") played Thief this sub-game
 
 
 @dataclass
 class SeriesResult:
     sub_games: list[SubGameResult]
-    cop_total: int
-    thief_total: int
+    group_a_total: int     # group A's score = its Cop points + its Thief points
+    group_b_total: int     # group B's score = its Cop points + its Thief points
 
 
 def play_sub_game(config, cop_mover, thief_mover) -> SubGameResult:
@@ -51,15 +53,34 @@ def play_sub_game(config, cop_mover, thief_mover) -> SubGameResult:
     return SubGameResult(winner, cop_score, thief_score, state.moves_used)
 
 
-def play_series(config, cop_mover, thief_mover) -> SeriesResult:
+def play_series(config, group_a, group_b) -> SeriesResult:
+    """Run num_games sub-games between two GROUPS, swapping roles each sub-game.
+
+    Per the assignment (§4.4), each group plays as Cop in half the sub-games and as
+    Thief in the other half; its series score is its Cop points plus its Thief points.
+    With the default 6 sub-games a group is Cop 3× and Thief 3× → max 90, min 30.
+    """
     sub_games = []
-    cop_total = 0
-    thief_total = 0
+    group_a_total = 0
+    group_b_total = 0
 
-    for _ in range(config.num_games):
+    for i in range(config.num_games):
+        # Alternate roles: even sub-games A=Cop/B=Thief, odd sub-games A=Thief/B=Cop.
+        a_is_cop = (i % 2 == 0)
+        cop_mover = group_a if a_is_cop else group_b
+        thief_mover = group_b if a_is_cop else group_a
+
         result = play_sub_game(config, cop_mover, thief_mover)
+        result.cop_group = "A" if a_is_cop else "B"
+        result.thief_group = "B" if a_is_cop else "A"
         sub_games.append(result)
-        cop_total += result.cop_score
-        thief_total += result.thief_score
 
-    return SeriesResult(sub_games=sub_games, cop_total=cop_total, thief_total=thief_total)
+        # Attribute each role's points to the group that played that role.
+        if a_is_cop:
+            group_a_total += result.cop_score
+            group_b_total += result.thief_score
+        else:
+            group_a_total += result.thief_score
+            group_b_total += result.cop_score
+
+    return SeriesResult(sub_games=sub_games, group_a_total=group_a_total, group_b_total=group_b_total)

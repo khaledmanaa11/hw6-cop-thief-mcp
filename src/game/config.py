@@ -30,6 +30,7 @@ class Config:
     max_barriers: int
     scoring: ScoringConfig
     servers: ServersConfig | None = None
+    output_run_dir: str = "runs"
 
 
 def load_config(path: str) -> Config:
@@ -79,6 +80,13 @@ def load_config(path: str) -> Config:
 
         servers = ServersConfig(cop=_endpoint(sv["cop"]), thief=_endpoint(sv["thief"]))
 
+    output_run_dir = "runs"
+    if "output" in data and "run_dir" in data["output"]:
+        run_dir = data["output"]["run_dir"]
+        if not run_dir:
+            raise ValueError("output.run_dir must be non-empty")
+        output_run_dir = run_dir
+
     return Config(
         grid_size=(gs[0], gs[1]),
         max_moves=max_moves,
@@ -86,4 +94,5 @@ def load_config(path: str) -> Config:
         max_barriers=max_barriers,
         scoring=scoring,
         servers=servers,
+        output_run_dir=output_run_dir,
     )

@@ -8,9 +8,13 @@ def main() -> None:
     result = play_series(config, RandomMover(), RandomMover())
 
     for i, sg in enumerate(result.sub_games, 1):
-        print(f"Sub-game {i}: winner={sg.winner} cop={sg.cop_score} thief={sg.thief_score} moves={sg.moves_used}")
+        winning_group = sg.cop_group if sg.winner == "COP" else sg.thief_group
+        print(
+            f"Sub-game {i}: Cop=Group {sg.cop_group}  Thief=Group {sg.thief_group}  "
+            f"-> {sg.winner} wins (Group {winning_group})  moves={sg.moves_used}"
+        )
 
-    print(f"Series totals: cop={result.cop_total} thief={result.thief_total}")
+    print(f"Series totals: Group A={result.group_a_total}  Group B={result.group_b_total}")
 
 
 if __name__ == "__main__":

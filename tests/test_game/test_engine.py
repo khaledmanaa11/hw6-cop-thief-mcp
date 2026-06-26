@@ -25,6 +25,21 @@ def test_series_length_and_scores(grid_size):
         assert total in (cop_win_total, thief_win_total)
 
 
+def test_roles_swap_and_group_totals_respect_bounds():
+    cfg = load_config("config.yaml")  # default num_games = 6
+    result = play_series(cfg, RandomMover(), RandomMover())
+
+    # Each group plays Cop in half the sub-games and Thief in the other half.
+    a_as_cop = sum(1 for sg in result.sub_games if sg.cop_group == "A")
+    a_as_thief = sum(1 for sg in result.sub_games if sg.thief_group == "A")
+    assert a_as_cop == cfg.num_games // 2
+    assert a_as_thief == cfg.num_games // 2
+
+    # Per §4.4: a group's series score is bounded by 90 (max) and 30 (min).
+    for total in (result.group_a_total, result.group_b_total):
+        assert 30 <= total <= 90
+
+
 def test_forced_capture_yields_cop_win_score():
     cfg = load_config("config.yaml")
     # Place thief one step S of cop — cop is THIEF first but we override state manually

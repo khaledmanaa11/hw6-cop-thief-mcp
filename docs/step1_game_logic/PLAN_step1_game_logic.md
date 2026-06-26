@@ -34,8 +34,8 @@ tests/test_game/test_engine.py       (new)   — series and grid escalation test
 - `Position` — `(row: int, col: int)` tuple.
 - `Move` — enum values for 8 movement directions plus `PLACE_BARRIER`.
 - `GameState` — `cop_pos`, `thief_pos`, `to_move`, `moves_used`, `cop_barriers_left`, `board: Board`. **Barriers live only on `Board`** (single source of truth); `GameState` references the board rather than keeping its own barrier set. Built via `initial_state(config)` (Cop `(0,0)`, Thief `(rows-1, cols-1)`, Thief to move).
-- `SubGameResult` — `winner: str`, `cop_score: int`, `thief_score: int`, `moves_used: int`.
-- `SeriesResult` — `sub_games: list[SubGameResult]`, `cop_total: int`, `thief_total: int`.
+- `SubGameResult` — `winner: str` (winning ROLE), `cop_score: int`, `thief_score: int`, `moves_used: int`, `cop_group: str`, `thief_group: str` (which GROUP "A"/"B" played each role).
+- `SeriesResult` — `sub_games: list[SubGameResult]`, `group_a_total: int`, `group_b_total: int`. Per §4.4 each group plays Cop in half the sub-games and Thief in the other half; a group's total = its Cop points + its Thief points (max 90, min 30).
 
 ## 4. Component design
 ### `src/game/config.py`
@@ -81,7 +81,7 @@ tests/test_game/test_engine.py       (new)   — series and grid escalation test
 - Key types/functions:
   - `SubGameResult` / `SeriesResult` — plain dataclasses (downstream contract for steps 6 & 8).
   - `def play_sub_game(config: Config, cop_mover: Mover, thief_mover: Mover) -> SubGameResult:` — run a single sub-game with Thief moving first. If the current player has **no legal moves**, that turn is skipped (count it, flip turn) rather than calling the mover — this prevents a crash when a player is boxed in by barriers/edges.
-  - `def play_series(config: Config, cop_mover: Mover, thief_mover: Mover) -> SeriesResult:` — run `num_games` sub-games and accumulate totals.
+  - `def play_series(config: Config, group_a: Mover, group_b: Mover) -> SeriesResult:` — run `num_games` sub-games between two **groups**, swapping Cop/Thief roles each sub-game (even → A=Cop/B=Thief, odd → A=Thief/B=Cop), and accumulate each group's total (its Cop points + its Thief points). Matches §4.4's 90-max/30-min group bound.
 
 ### `src/game/__main__.py`
 - Responsibility: command-line entry so the series runs end-to-end (`python -m src.game`).
@@ -95,7 +95,7 @@ tests/test_game/test_engine.py       (new)   — series and grid escalation test
    - Otherwise ask `thief_mover.choose_move(state)` when `to_move == "THIEF"`, else `cop_mover.choose_move(state)`.
    - `apply_move(state, move)` validates against `legal_moves` (raises `ValueError` on an illegal move), increments `moves_used`, and switches turn.
 4. When the game ends, compute `SubGameResult` using the scoring rules.
-5. In `play_series`, repeat the sub-game loop `config.num_games` times and sum `cop_total` and `thief_total`.
+5. In `play_series`, repeat the sub-game loop `config.num_games` times. Each sub-game swaps which group is Cop vs Thief; attribute each role's points to the group that played it, accumulating `group_a_total` and `group_b_total`.
 
 ## 6. Config additions
 | Key | Default | Used by |
