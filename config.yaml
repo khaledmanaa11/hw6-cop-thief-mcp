@@ -16,3 +16,22 @@ servers:
     port: 8002
 output:
   run_dir: "runs"
+strategy:
+  cop: minimax
+  thief: minimax
+  minimax:
+    depth: 4
+    weights:
+      dist: 1.0
+      thief_mob: 0.3
+      corner: 0.2
+      reach: 0.15
+      capture: 1000.0
+  qtable:
+    path: "models/qtable.json"
+    train:
+      episodes: 20000
+      alpha: 0.3
+      gamma: 0.95
+      epsilon: 0.2
+      seed: 7

@@ -22,6 +22,26 @@ class ServersConfig:
     thief: ServerEndpoint
 
 
+_DEFAULT_STRATEGY = {
+    "cop": "minimax",
+    "thief": "minimax",
+    "minimax": {
+        "depth": 4,
+        "weights": {
+            "dist": 1.0,
+            "thief_mob": 0.3,
+            "corner": 0.2,
+            "reach": 0.15,
+            "capture": 1000.0,
+        },
+    },
+    "qtable": {
+        "path": "models/qtable.json",
+        "train": {"episodes": 20000, "alpha": 0.3, "gamma": 0.95, "epsilon": 0.2, "seed": 7},
+    },
+}
+
+
 @dataclass
 class Config:
     grid_size: tuple[int, int]
@@ -31,6 +51,7 @@ class Config:
     scoring: ScoringConfig
     servers: ServersConfig | None = None
     output_run_dir: str = "runs"
+    strategy: dict | None = None
 
 
 def load_config(path: str) -> Config:
@@ -87,6 +108,10 @@ def load_config(path: str) -> Config:
             raise ValueError("output.run_dir must be non-empty")
         output_run_dir = run_dir
 
+    strategy = dict(_DEFAULT_STRATEGY)
+    if "strategy" in data:
+        strategy.update(data["strategy"])
+
     return Config(
         grid_size=(gs[0], gs[1]),
         max_moves=max_moves,
@@ -95,4 +120,5 @@ def load_config(path: str) -> Config:
         scoring=scoring,
         servers=servers,
         output_run_dir=output_run_dir,
+        strategy=strategy,
     )
