@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from copy import deepcopy
 import yaml
 
 
@@ -41,6 +42,23 @@ _DEFAULT_STRATEGY = {
     },
 }
 
+_DEFAULT_AGENTS = {
+    "cop": "llm",
+    "thief": "llm",
+    "llm": {
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 1024,
+        "temperature": 0.7,
+        "veto_margin": 50.0,
+    },
+}
+
+_DEFAULT_OBSERVATION = {
+    "mode": "noisy",
+    "noisy": {"reveal_radius": 2, "quadrant_hint": True},
+}
+
 
 @dataclass
 class Config:
@@ -52,6 +70,21 @@ class Config:
     servers: ServersConfig | None = None
     output_run_dir: str = "runs"
     strategy: dict | None = None
+    agents: dict | None = None
+    observation: dict | None = None
+
+
+def _merged_defaults(defaults: dict, override: dict | None) -> dict:
+    result = deepcopy(defaults)
+    if override:
+        for key, value in override.items():
+            if isinstance(result.get(key), dict) and isinstance(value, dict):
+                nested = dict(result[key])
+                nested.update(value)
+                result[key] = nested
+            else:
+                result[key] = value
+    return result
 
 
 def load_config(path: str) -> Config:
@@ -108,9 +141,9 @@ def load_config(path: str) -> Config:
             raise ValueError("output.run_dir must be non-empty")
         output_run_dir = run_dir
 
-    strategy = dict(_DEFAULT_STRATEGY)
-    if "strategy" in data:
-        strategy.update(data["strategy"])
+    strategy = _merged_defaults(_DEFAULT_STRATEGY, data.get("strategy"))
+    agents = _merged_defaults(_DEFAULT_AGENTS, data.get("agents"))
+    observation = _merged_defaults(_DEFAULT_OBSERVATION, data.get("observation"))
 
     return Config(
         grid_size=(gs[0], gs[1]),
@@ -121,4 +154,6 @@ def load_config(path: str) -> Config:
         servers=servers,
         output_run_dir=output_run_dir,
         strategy=strategy,
+        agents=agents,
+        observation=observation,
     )

@@ -5,16 +5,29 @@ from src.game.engine import SubGameResult, SeriesResult
 from src.game.moves import apply_move, legal_moves
 from src.game.rules import is_capture, is_timeout, score_sub_game
 from src.game.state import initial_state
-from src.orchestrator.recorders import ReplayLog, observe, render_board
+from src.agents.agent import AgentAction, MoverAgent
+from src.orchestrator.recorders import ReplayLog, belief_error, observe, render_board
 
 
-def _envelope(side: str, turn: int, move_name: str) -> dict:
+def _envelope(side: str, turn: int, text: str) -> dict:
     return {
         "from": side,
         "turn": turn,
         "ts": datetime.now(timezone.utc).isoformat(),
-        "text": f"{side} plays {move_name}",
+        "text": text,
     }
+
+
+def _ensure_agent(candidate, role: str):
+    if hasattr(candidate, "act"):
+        return candidate
+    return MoverAgent(candidate, role=role)
+
+
+def _agent_for(candidate, role: str):
+    if callable(candidate) and not hasattr(candidate, "act") and not hasattr(candidate, "choose_move"):
+        return _ensure_agent(candidate(role), role)
+    return _ensure_agent(candidate, role)
 
 
 async def run_sub_game(
@@ -29,7 +42,10 @@ async def run_sub_game(
     print_output: bool = False,
 ) -> SubGameResult:
     state = initial_state(config)
-    last_msgs: dict[str, str | None] = {"COP": None, "THIEF": None}
+    cop_agent = _ensure_agent(cop_mover, "COP")
+    thief_agent = _ensure_agent(thief_mover, "THIEF")
+    inboxes: dict[str, list[dict]] = {"COP": [], "THIEF": []}
+    observation_cfg = getattr(config, "observation", None) or {"mode": "full"}
 
     while True:
         if is_capture(state):
@@ -56,9 +72,19 @@ async def run_sub_game(
 
         side = state.to_move
         gateway = cop_gateway if side == "COP" else thief_gateway
-        mover = cop_mover if side == "COP" else thief_mover
-
-        move = mover.choose_move(state)
+        last_msg = inboxes[side][-1]["text"] if inboxes[side] else None
+        obs = observe(
+            state,
+            side,
+            last_msg,
+            mode=observation_cfg["mode"],
+            params={**observation_cfg, "max_moves": config.max_moves},
+            inbox=inboxes[side],
+        )
+        obs["state"] = state
+        agent = cop_agent if side == "COP" else thief_agent
+        action = agent.act(obs, inboxes[side])
+        move = action.move
 
         # Validate-before-apply: every ply goes through the side's server first
         verdict = await gateway.validate_move(
@@ -77,13 +103,33 @@ async def run_sub_game(
         state = apply_move(state, move)
 
         # Message bus: moving side emits a free-text envelope; other side receives it
-        env = _envelope(side, state.moves_used, move.name)
+        env = _envelope(side, state.moves_used, action.message)
         await gateway.send_message(env)
+        if action.llm and hasattr(gateway, "_telemetry"):
+            gateway._telemetry.record_llm(action.llm)
         other = "THIEF" if side == "COP" else "COP"
-        last_msgs[other] = env["text"]
+        inboxes[other].append(env)
 
-        cop_obs = observe(state, "COP", last_msgs["COP"])
-        thief_obs = observe(state, "THIEF", last_msgs["THIEF"])
+        cop_last = inboxes["COP"][-1]["text"] if inboxes["COP"] else None
+        thief_last = inboxes["THIEF"][-1]["text"] if inboxes["THIEF"] else None
+        obs_params = {**observation_cfg, "max_moves": config.max_moves}
+        cop_obs = observe(
+            state,
+            "COP",
+            cop_last,
+            mode=observation_cfg["mode"],
+            params=obs_params,
+            inbox=inboxes["COP"],
+        )
+        thief_obs = observe(
+            state,
+            "THIEF",
+            thief_last,
+            mode=observation_cfg["mode"],
+            params=obs_params,
+            inbox=inboxes["THIEF"],
+        )
+        truth_opponent_pos = state.thief_pos if side == "COP" else state.cop_pos
 
         record = {
             "turn": state.moves_used,
@@ -91,6 +137,15 @@ async def run_sub_game(
             "move": move.name,
             "verdict": verdict,
             "message": env,
+            "action": {
+                "message": action.message,
+                "belief": list(action.belief) if action.belief is not None else None,
+                "belief_error": belief_error(action.belief, truth_opponent_pos),
+                "confidence": action.confidence,
+                "intent": action.intent,
+                "reasoning": action.reasoning,
+                "llm": action.llm,
+            },
             "obs": {"COP": cop_obs, "THIEF": thief_obs},
             "ground_truth": {
                 "cop_pos": list(state.cop_pos),
@@ -129,14 +184,16 @@ async def run_series(
 
     for i in range(config.num_games):
         a_is_cop = (i % 2 == 0)
-        cop_mover = group_a if a_is_cop else group_b
-        thief_mover = group_b if a_is_cop else group_a
+        cop_candidate = group_a if a_is_cop else group_b
+        thief_candidate = group_b if a_is_cop else group_a
+        cop_agent = _agent_for(cop_candidate, "COP")
+        thief_agent = _agent_for(thief_candidate, "THIEF")
 
         if print_output:
             print(f"\n--- Sub-game {i + 1}: {'A=Cop B=Thief' if a_is_cop else 'A=Thief B=Cop'} ---")
 
         result = await run_sub_game(
-            config, cop_gateway, thief_gateway, cop_mover, thief_mover,
+            config, cop_gateway, thief_gateway, cop_agent, thief_agent,
             transcript=transcript, replay_log=replay_log, print_output=print_output,
         )
         result.cop_group = "A" if a_is_cop else "B"

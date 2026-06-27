@@ -35,3 +35,17 @@ strategy:
       gamma: 0.95
       epsilon: 0.2
       seed: 7
+agents:
+  cop: llm
+  thief: llm
+  llm:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    max_tokens: 1024
+    temperature: 0.7
+    veto_margin: 50.0
+observation:
+  mode: noisy
+  noisy:
+    reveal_radius: 2
+    quadrant_hint: true
