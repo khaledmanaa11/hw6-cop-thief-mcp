@@ -131,3 +131,69 @@ stateless validators; the referee owns all ground truth.
 - **`src/gui/`** — FastAPI replay viewer; all data shaping in unit-tested Python, JS is a
   dumb renderer.
 - **`src/reporting/`** — Gmail-API JSON report builder + fail-soft send hook.
+
+## Architecture-challenge analysis
+
+The interesting engineering problems this design had to solve:
+
+1. **Who owns state?** MCP tools are naturally request/response and stateless. If each server
+   held its own copy of the board the two copies would drift. **Resolution:** the referee owns
+   the single authoritative `GameState`; servers only *validate*. This makes the system
+   restart-safe and the servers horizontally trivial to deploy.
+
+2. **Partial observability vs. a shared board.** A Dec-POMDP needs each agent to see only its
+   own observation `Ω_i`, but the engine knows everything. **Resolution:** an explicit
+   observation function (`recorders.observe`) projects the full state down to per-agent fog
+   (`blind`/`noisy`/`full`), so an agent literally cannot read the opponent's coordinates
+   except through messages.
+
+3. **Natural language as a control channel.** Free text is unbounded and adversarial — agents
+   lie. **Resolution:** structured LLM output `{move, message, belief, confidence, intent,
+   reasoning}` where only `message` is ever transmitted and `reasoning` is **private**
+   (logged, never enveloped). The verbal trash-talk is grading-safe *by construction*: the
+   visible channel carries no reliable information.
+
+4. **LLM unreliability vs. legal play.** A raw LLM will occasionally pick an illegal or losing
+   move. **Resolution:** the **hybrid veto** — minimax checks the LLM's proposal and overrides
+   only illegal/blunder moves, weighted by the LLM's stated confidence. The LLM is genuinely
+   part of the choice, but the game stays legal.
+
+5. **Reproducibility of a non-deterministic LLM.** **Resolution:** record-and-replay. Real LLM
+   I/O is written to JSONL; determinism is guaranteed in tests via `FakeLLM`. The same JSONL
+   spine feeds the GUI (Step 6) and the email report (Step 8).
+
+6. **Secrets across a cloud boundary.** **Resolution:** per-server static bearer tokens read
+   from env (`COP_AUTH_TOKEN` / `THIEF_AUTH_TOKEN`), distinct per role to preserve the
+   cop/thief asymmetry, **active only when the env var is set** so local runs and the 180 tests
+   stay green. No token, URL, or key is ever committed.
+
+## Proof of correct agent communication
+
+A real series played **against the live Cloud Run servers**
+(`runs/20260628T150334.jsonl`, 91 plies, 6 sub-games). Each turn carries the agent's natural-
+language message, its private intent, and its belief about the opponent (Chebyshev error):
+
+```
+T1 THIEF  move=N   intent=deceive  guess=[1,1] err=1
+   "Well, well. Northwest, you say? How quaint. I'm heading that way myself…"
+T2 COP    move=E   intent=bait     guess=[0,3] err=3
+   "Northwest? NORTHWEST?! Kid, I own this board. Every wall, every corner…"
+T3 THIEF  move=S   intent=bait     guess=[3,0] err=3
+   "East? Oh, you're EAST now? That's funny. A second ago you owned the whole board…"
+T4 COP    move=SE  intent=bait     guess=[2,3] err=2
+   "Oh, you're *worried* now — asking about rows, about my position. That's fear talking…"
+```
+
+**Series-level evidence the channel works:**
+
+- **Intents over 91 turns:** `deceive 45 · bait 37 · probe 5 · trap 3 · truth 1` — the agents
+  overwhelmingly choose to mislead, exactly as the Dec-POMDP incentive predicts.
+- **Belief accuracy:** average Chebyshev `belief_error = 1.05` (max 4) — despite both sides
+  lying, each agent infers the opponent's location to within ~1 cell from the message stream.
+- **Outcome:** 5 Cop captures + 1 Thief escape (sub-game 4 ran the full 25 plies) — consistent
+  with the empirical finding that the default 5×5 board is Cop-favored.
+- **Telemetry:** 91 LLM calls, ~117k input / ~33k output tokens, ~6 s/call.
+
+The orchestrator also renders an **ASCII board** each ply (`render_board`) and a readable
+transcript; the GUI (`src/gui`) replays the same JSONL with the board, the conversation log,
+per-agent fog, and the belief ghosts.
