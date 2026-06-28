@@ -21,7 +21,7 @@ async def test_friendly_failure(monkeypatch, capsys):
         async def ping(self):
             raise ConnectionRefusedError("connection refused")
 
-    monkeypatch.setattr(__main__, "HttpGateway", _FailingGateway)
+    monkeypatch.setattr(__main__, "gateway_from_env", lambda role, config, telemetry: _FailingGateway())
 
     with pytest.raises(SystemExit) as exc:
         await __main__.main()
@@ -71,7 +71,7 @@ async def test_legacy_agents_do_not_construct_anthropic_without_key(monkeypatch,
         )
 
     monkeypatch.setattr(__main__, "load_config", lambda path: cfg)
-    monkeypatch.setattr(__main__, "HttpGateway", _Gateway)
+    monkeypatch.setattr(__main__, "gateway_from_env", lambda role, config, telemetry: _Gateway())
     monkeypatch.setattr(__main__, "AnthropicLLM", _FailIfConstructed)
     monkeypatch.setattr(__main__, "run_series", _run_series)
 
