@@ -7,3 +7,8 @@ dist/
 build/
 .env
 runs/
+secrets/
+gmail_credentials.json
+gmail_token.json
+.coverage
+.tmp/
