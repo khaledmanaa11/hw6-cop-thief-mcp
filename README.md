@@ -260,3 +260,43 @@ the orchestrator) and **disabled by default** (`report.enabled: false` + absent 
 runs never email anyone and the 180 tests stay green). OAuth client secrets and the refresh
 token live only under `secrets/` (gitignored, alongside `gmail_credentials.json` /
 `gmail_token.json`); the scope is minimal and no secret is ever written to the body or logs.
+
+## Configuration & security
+
+- **All game parameters live in `config.yaml`** — grid, moves, scoring, server ports,
+  strategy weights, observation mode, GUI host/port, and report settings. No magic numbers in
+  code; the grid is resizable and tested on 2×2 → 5×5.
+- **Secrets only via env / gitignored files.** `ANTHROPIC_API_KEY`, the per-server bearer
+  tokens, and the public Cloud Run URLs come from the environment / `.env` (see
+  `.env.example`). `.gitignore` excludes `.env`, `secrets/`, `runs/`, `gmail_credentials.json`,
+  and `gmail_token.json`. Nothing sensitive is in the repo.
+- **Backward-compatible defaults.** Cloud auth and email reporting are both inert unless their
+  env vars / config flags are set, so the full local run and test suite work out of the box.
+
+## Testing & project layout
+
+```bash
+uv run pytest -q          # 180 passed
+```
+
+The suite is fully offline — MCP calls go through `InMemoryGateway`, the LLM is `FakeLLM`, and
+Gmail/Cloud Run are stubbed — so no ports, network, API key, or tokens are needed to run it.
+
+```
+src/
+  game/         # pure engine: board, moves, rules, scoring, series loop
+  mcp_servers/  # two FastMCP servers (cop/thief) + auth + validate-only tools
+  orchestrator/ # referee, gateway protocol, message bus, recorders
+  strategy/     # minimax / qtable / greedy movers + factory
+  agents/       # LLM hybrid agent, llm_client (Anthropic/Fake), prompts
+  gui/          # FastAPI replay viewer (Python logic + thin JS)
+  reporting/    # Gmail-API JSON report builder + fail-soft hook
+tests/          # 180 tests mirroring each package
+docs/           # per-step DECISION / PRD / PLAN / TODO planning triplets
+config.yaml     # single source of all parameters
+Dockerfile      # one image, MCP_ROLE dispatch, for Cloud Run
+```
+
+Each of the 8 steps was built from a self-contained planning triplet
+(`docs/stepN_*/{DECISION,PRD,PLAN,TODO}.md`); the roadmap and progress log live in
+`docs/_system/ROADMAP.md`.
