@@ -49,3 +49,13 @@ observation:
   noisy:
     reveal_radius: 2
     quadrant_hint: true
+gui:
+  host: "127.0.0.1"
+  port: 8000
+  run_dir: "runs"
+report:
+  enabled: false        # flip to true + run `python -m src.reporting auth` once for the live send
+  to: "rmisegal+uoh26b@gmail.com"
+  subject: "HW6 Cop&Thief MCP series report"
+  credentials_path: "secrets/gmail_credentials.json"   # OAuth client secret (Google Cloud Console)
+  token_path: "secrets/gmail_token.json"               # refresh token (one-time login)
