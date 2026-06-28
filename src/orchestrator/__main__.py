@@ -5,21 +5,21 @@ import time
 from src.agents.factory import build_agent
 from src.agents.llm_client import AnthropicLLM
 from src.game.config import load_config
-from src.orchestrator.gateway import HttpGateway
+from src.orchestrator.gateway import gateway_from_env
 from src.orchestrator.recorders import ReplayLog, Telemetry
 from src.orchestrator.referee import run_series
+from src.reporting.gmail_client import maybe_send_report
 
 
 async def main() -> None:
     config = load_config("config.yaml")
     telemetry = Telemetry()
 
-    cop_url = f"http://{config.servers.cop.host}:{config.servers.cop.port}/mcp"
-    thief_url = f"http://{config.servers.thief.host}:{config.servers.thief.port}/mcp"
-
+    # gateway_from_env reads COP_SERVER_URL/THIEF_SERVER_URL and auth tokens from env;
+    # falls back to config host:port / no token when env is absent (local mode).
     async with (
-        HttpGateway(cop_url, "cop", telemetry) as cop_gw,
-        HttpGateway(thief_url, "thief", telemetry) as thief_gw,
+        gateway_from_env("cop", config, telemetry) as cop_gw,
+        gateway_from_env("thief", config, telemetry) as thief_gw,
     ):
         # Boot ping — record latency and fail fast if servers are not up
         try:
@@ -80,7 +80,7 @@ async def main() -> None:
         )
 
     s = telemetry.summary()
-    print(f"\n=== Telemetry ===")
+    print("\n=== Telemetry ===")
     print(
         f"Calls: {s['calls']}  avg: {s['avg_ms']}ms  p95: {s['p95_ms']}ms  "
         f"boot — cop: {s['boot_ping'].get('cop_ms', 0):.1f}ms  "
@@ -96,6 +96,9 @@ async def main() -> None:
             f"estimated cost: ${s['llm_estimated_cost_usd']:.6f}"
         )
     print(f"Replay log: {replay_log.path}")
+    # Step 8: gated, fail-soft Gmail report hook. No-op unless config.report['enabled']
+    # is True AND a token file exists (default disabled -> 165 prior tests stay green).
+    maybe_send_report(result, s, config, replay_log.path)
 
 
 if __name__ == "__main__":
