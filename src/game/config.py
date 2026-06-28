@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from copy import deepcopy
+import os
+
 import yaml
 
 
@@ -59,6 +61,16 @@ _DEFAULT_OBSERVATION = {
     "noisy": {"reveal_radius": 2, "quadrant_hint": True},
 }
 
+_DEFAULT_GUI = {"host": "127.0.0.1", "port": 8000}
+
+_DEFAULT_REPORT = {
+    "enabled": False,
+    "to": "",
+    "subject": "HW6 Cop&Thief MCP series report",
+    "credentials_path": "secrets/gmail_credentials.json",
+    "token_path": "secrets/gmail_token.json",
+}
+
 
 @dataclass
 class Config:
@@ -72,6 +84,8 @@ class Config:
     strategy: dict | None = None
     agents: dict | None = None
     observation: dict | None = None
+    gui: dict | None = None
+    report: dict | None = None
 
 
 def _merged_defaults(defaults: dict, override: dict | None) -> dict:
@@ -145,6 +159,27 @@ def load_config(path: str) -> Config:
     agents = _merged_defaults(_DEFAULT_AGENTS, data.get("agents"))
     observation = _merged_defaults(_DEFAULT_OBSERVATION, data.get("observation"))
 
+    gui = _merged_defaults(_DEFAULT_GUI, data.get("gui"))
+    gui["run_dir"] = gui.get("run_dir") or output_run_dir
+    if not gui["host"]:
+        raise ValueError("gui.host must be non-empty")
+    gui["port"] = int(gui["port"])
+    if not (1 <= gui["port"] <= 65535):
+        raise ValueError(f"gui.port out of range: {gui['port']}")
+    if not gui["run_dir"]:
+        raise ValueError("gui.run_dir must be non-empty")
+
+    report = _merged_defaults(_DEFAULT_REPORT, data.get("report"))
+    # env overrides win over config
+    if os.environ.get("REPORT_ENABLED") is not None:
+        report["enabled"] = os.environ["REPORT_ENABLED"].lower() == "true"
+    if os.environ.get("REPORT_TO"):
+        report["to"] = os.environ["REPORT_TO"]
+    if os.environ.get("GMAIL_CREDENTIALS_PATH"):
+        report["credentials_path"] = os.environ["GMAIL_CREDENTIALS_PATH"]
+    if os.environ.get("GMAIL_TOKEN_PATH"):
+        report["token_path"] = os.environ["GMAIL_TOKEN_PATH"]
+
     return Config(
         grid_size=(gs[0], gs[1]),
         max_moves=max_moves,
@@ -156,4 +191,6 @@ def load_config(path: str) -> Config:
         strategy=strategy,
         agents=agents,
         observation=observation,
+        gui=gui,
+        report=report,
     )
