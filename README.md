@@ -197,3 +197,66 @@ T4 COP    move=SE  intent=bait     guess=[2,3] err=2
 The orchestrator also renders an **ASCII board** each ply (`render_board`) and a readable
 transcript; the GUI (`src/gui`) replays the same JSONL with the board, the conversation log,
 per-agent fog, and the belief ghosts.
+
+## Cloud Deployment
+
+The two MCP servers are containerized as **one image** (role selected by `MCP_ROLE=cop|thief`)
+and deployed live to **Google Cloud Run** (project `hw6-copthief`, region `us-central1`). The
+LLM and orchestrator stay client-side; only the tool-servers go to the cloud.
+
+**Live public endpoints:**
+
+| Server | URL |
+|--------|-----|
+| Cop | `https://hw6-cop-bp45yo7zda-uc.a.run.app/mcp` |
+| Thief | `https://hw6-thief-bp45yo7zda-uc.a.run.app/mcp` |
+
+**Auth — per-server static bearer token (401 without, accepted with):**
+
+```bash
+# No token → rejected
+$ curl -i https://hw6-cop-bp45yo7zda-uc.a.run.app/mcp
+HTTP/1.1 401 Unauthorized
+www-authenticate: Bearer error="invalid_token"
+
+# Valid token → request reaches the MCP server (NOT 401)
+$ curl -i -H "Authorization: Bearer <COP_TOKEN>" https://hw6-cop-bp45yo7zda-uc.a.run.app/mcp
+HTTP/1.1 406 Not Acceptable          # 406 only because bare curl lacks the
+mcp-session-id: <…>                  # text/event-stream Accept header — the point is
+                                     # it is NOT 401, so the token was accepted.
+```
+
+Distinct `COP_AUTH_TOKEN` / `THIEF_AUTH_TOKEN` values are set as Cloud Run env vars and
+**never committed** (shown here only as `<COP_TOKEN>`). To point the orchestrator at the cloud,
+set `COP_SERVER_URL` / `THIEF_SERVER_URL` and the matching tokens in `.env`
+(see `.env.example`); `gateway_from_env` falls back to local config when they are absent.
+
+Build & deploy steps are in `docs/step7_cloud_deploy/DEPLOY.md` (`gcloud builds submit` +
+`gcloud run deploy`, no local Docker required).
+
+## Email reporting (Gmail API)
+
+After a 6-sub-game series the orchestrator can email a **JSON-only report** to the lecturer
+(`rmisegal+uoh26b@gmail.com`) via the **Gmail API v1** using OAuth2 user consent (scope
+`gmail.send` only).
+
+**One-time login, then automatic send:**
+
+```bash
+# 1. One-time browser consent — stores a refresh token under secrets/ (gitignored)
+uv run python -m src.reporting auth
+
+# 2. Enable the hook (config.yaml: report.enabled: true, or REPORT_ENABLED=true)
+#    The next series automatically emails the JSON report on completion.
+uv run python -m src.orchestrator
+```
+
+The report body is compact JSON: run header (grid size, num games, scoring, per-side agent
+type and observation mode), per-sub-game results, group totals, a telemetry summary, and the
+replay-log filename — no attachment, no inline JSONL.
+
+**Safety / cyber-hygiene:** the hook is **fail-soft** (`maybe_send_report` never raises into
+the orchestrator) and **disabled by default** (`report.enabled: false` + absent token ⇒ dev
+runs never email anyone and the 180 tests stay green). OAuth client secrets and the refresh
+token live only under `secrets/` (gitignored, alongside `gmail_credentials.json` /
+`gmail_token.json`); the scope is minimal and no secret is ever written to the body or logs.
