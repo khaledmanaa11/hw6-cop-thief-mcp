@@ -2,9 +2,13 @@ from fastmcp import FastMCP
 from src.game.config import load_config
 from src.mcp_servers import tools
 
+import os
 
-def build_cop_server(config) -> FastMCP:
-    mcp = FastMCP("cop")
+from src.mcp_servers.auth import build_auth
+
+
+def build_cop_server(config, auth_token: str | None = None) -> FastMCP:
+    mcp = FastMCP("cop", auth=build_auth(auth_token))
 
     @mcp.tool
     def ping() -> dict:
@@ -40,9 +44,11 @@ def build_cop_server(config) -> FastMCP:
 
 if __name__ == "__main__":
     config = load_config("config.yaml")
-    mcp = build_cop_server(config)
-    mcp.run(
-        transport="http",
-        host=config.servers.cop.host,
-        port=config.servers.cop.port,
-    )
+    # Auth active only when COP_AUTH_TOKEN is set; otherwise open (token stays out of logs)
+    mcp = build_cop_server(config, auth_token=os.environ.get("COP_AUTH_TOKEN"))
+
+    _env_port = os.environ.get("PORT")            # Cloud Run injects PORT
+    _port = int(_env_port) if _env_port else config.servers.cop.port
+    _host = "0.0.0.0" if _env_port else config.servers.cop.host
+
+    mcp.run(transport="http", host=_host, port=_port)
