@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HW6 Cop &amp; Thief Replay</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Cop &amp; Thief Replay</h1>
+    <div class="run-selector">
+      <label for="runSelect">Run:</label>
+      <select id="runSelect"><option value="">— select a run —</option></select>
+      <button id="refreshBtn">&#8635;</button>
+    </div>
+  </header>
+  <main>
+    <section class="board-section">
+      <canvas id="board" width="400" height="400"></canvas>
+      <div class="controls">
+        <button id="prevBtn">&#9664;</button>
+        <button id="playBtn">&#9654;</button>
+        <button id="nextBtn">&#9654;&#9654;</button>
+        <input type="range" id="scrubber" min="0" value="0" step="1">
+        <label>Speed <input type="range" id="speedSlider" min="100" max="2000" value="700" step="100"></label>
+      </div>
+      <div class="fog-toggle">
+        <span>Fog side:</span>
+        <button class="fog-btn active" data-side="COP">COP</button>
+        <button class="fog-btn" data-side="THIEF">THIEF</button>
+      </div>
+    </section>
+    <aside class="side-panels">
+      <section class="panel">
+        <h2>Status</h2>
+        <div id="telemetry"></div>
+      </section>
+      <section class="panel">
+        <h2>Fog View (<span id="fogLabel">COP</span>)</h2>
+        <div id="fogPanel"></div>
+      </section>
+      <section class="panel">
+        <h2>Conversation</h2>
+        <ul id="conversation"></ul>
+      </section>
+    </aside>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
