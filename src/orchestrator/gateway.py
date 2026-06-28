@@ -1,4 +1,5 @@
 import time
+import os
 from typing import Protocol, runtime_checkable
 
 from fastmcp import Client
@@ -81,7 +82,56 @@ class InMemoryGateway(_BaseGateway):
 
 
 class HttpGateway(_BaseGateway):
-    """Wraps a FastMCP HTTP server. Confirmed URL form: http://host:port/mcp"""
+    """Wraps a FastMCP HTTP server. Confirmed URL form: http://host:port/mcp
 
-    def __init__(self, url: str, name: str, telemetry: Telemetry) -> None:
+    auth_token: when set, sends Authorization: Bearer <token> on every call.
+    Verified API: Client("url", auth="<token>") — see SDK_REFERENCE §1.1.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        name: str,
+        telemetry: Telemetry,
+        auth_token: str | None = None,
+    ) -> None:
         super().__init__(url, name, telemetry)
+        self._auth_token = auth_token
+
+    async def __aenter__(self) -> "HttpGateway":
+        # CONFIRMED: Client(url, auth="<token>") sends Authorization: Bearer <token>
+        # Source: FastMCP v3 docs (context7, 2026-06-27) — SDK_REFERENCE §1.1
+        if self._auth_token:
+            self._ctx = Client(self._transport, auth=self._auth_token)
+        else:
+            self._ctx = Client(self._transport)   # unchanged from original
+        self._client = await self._ctx.__aenter__()
+        return self
+
+
+def gateway_from_env(role: str, config, telemetry: Telemetry) -> HttpGateway:
+    """Build an HttpGateway from env (cloud) or config (local).
+
+    Cloud mode (env set):
+        COP_SERVER_URL  / THIEF_SERVER_URL  → public HTTPS URL incl. /mcp path
+        COP_AUTH_TOKEN  / THIEF_AUTH_TOKEN  → bearer token (may be unset locally)
+    Local mode (env absent):
+        falls back to http://{config.servers.<role>.host}:{port}/mcp, no token.
+
+    Args:
+        role: "cop" or "thief" (case-insensitive).
+        config: loaded Config object (must have config.servers set).
+        telemetry: Telemetry instance to pass through.
+
+    Returns:
+        Configured HttpGateway (not yet entered as async context manager).
+    """
+    r = role.lower()
+    r_upper = role.upper()
+    url = os.environ.get(f"{r_upper}_SERVER_URL")
+    if not url:
+        ep = getattr(config.servers, r)
+        url = f"http://{ep.host}:{ep.port}/mcp"
+    raw_token = os.environ.get(f"{r_upper}_AUTH_TOKEN")
+    token = raw_token if raw_token else None
+    return HttpGateway(url=url, name=r, telemetry=telemetry, auth_token=token)
