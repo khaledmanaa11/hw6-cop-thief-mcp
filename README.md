@@ -86,3 +86,48 @@ is exactly what makes "infer the opponent's location and deceive" a real Dec-POM
 rather than a solved game. Each agent also maintains an explicit **belief** `b_i` (its guess
 of the opponent's cell); we score belief accuracy as the Chebyshev error between the guessed
 and true position (`belief_error`).
+
+## Architecture
+
+Strict tier separation — the LLM lives **only** in the client tier; the MCP servers are
+stateless validators; the referee owns all ground truth.
+
+```
+                      ┌──────────────────────────────────────────────┐
+                      │  Referee / Orchestrator  (src/orchestrator)   │
+                      │  • authoritative GameState  • message bus     │
+                      │  • applies moves via pure engine (src/game)   │
+                      │  • recorders: JSONL replay, telemetry, fog    │
+                      └───────┬───────────────────────────┬──────────┘
+            Agent A (Cop)     │ HTTP + Bearer             │ HTTP + Bearer    Agent B (Thief)
+   ┌──────────────────────┐   │                           │   ┌──────────────────────┐
+   │ LLMAgent (src/agents)│   │                           │   │ LLMAgent (src/agents)│
+   │ • Claude proposes    │   ▼                           ▼   │ • Claude proposes    │
+   │   move+msg+belief    │ ┌─────────────────┐  ┌─────────────────┐ move+msg+belief   │
+   │ • minimax veto       │ │  Cop MCP server │  │ Thief MCP server│ • minimax veto    │
+   │   (src/strategy)     │ │ (FastMCP :8001) │  │ (FastMCP :8002) │   (src/strategy)  │
+   └──────────────────────┘ │ validate-only   │  │ validate-only   └──────────────────┘
+                            │ place_barrier ✓ │  │ (no barrier)    │
+                            └─────────────────┘  └─────────────────┘
+                                    ▲                     ▲
+                                    └─── deployed to Google Cloud Run ───┘
+
+   Replay JSONL ──► GUI (src/gui, FastAPI + canvas)      Series result ──► Gmail report (src/reporting)
+```
+
+**Tiers**
+
+- **`src/game/`** — pure engine: grid, 8-dir movement, barriers, capture, scoring, series
+  loop. No MCP, no LLM, fully unit-tested. Single source of rules.
+- **`src/mcp_servers/`** — two FastMCP servers exposing `ping` / `validate_location` /
+  `validate_move` / `send_message` (+ `place_barrier` validate on the Cop only — a tested
+  **asymmetry**). **Stateless**: they validate, the referee applies.
+- **`src/orchestrator/`** — referee loop, `ServerGateway` protocol (`HttpGateway` for prod,
+  `InMemoryGateway` for port-free tests), message bus, and recorders (replay/telemetry/fog).
+- **`src/strategy/`** — `MinimaxMover` (alpha-beta, clone-safe), `QTableMover` (offline-trained,
+  committed table), `GreedyMover`; config-selectable per role.
+- **`src/agents/`** — `LLMAgent` hybrid (Claude proposes, minimax vetoes) with an injectable
+  `LLMClient` (`AnthropicLLM` real / `FakeLLM` deterministic in tests).
+- **`src/gui/`** — FastAPI replay viewer; all data shaping in unit-tested Python, JS is a
+  dumb renderer.
+- **`src/reporting/`** — Gmail-API JSON report builder + fail-soft send hook.
