@@ -57,3 +57,32 @@ uv run python -m src.orchestrator                # terminal 3  -> plays a 6-game
 # Replay GUI
 uv run python -m src.gui                         # http://127.0.0.1:8000
 ```
+
+## Formal model — Decentralized POMDP (Dec-POMDP)
+
+The game is a finite-horizon **Dec-POMDP**, the standard model for cooperative-style
+multi-agent decision making under partial observability. Here the two agents are
+**adversarial**, so it is a competitive Dec-POMDP (a partially observable stochastic game):
+
+```
+M = ⟨ I, S, {A_i}, T, R, {Ω_i}, O, h ⟩
+```
+
+| Symbol | In this project |
+|--------|-----------------|
+| **I** — agents | `{ Cop, Thief }` |
+| **S** — state | `(cop_pos, thief_pos, barriers ⊆ cells, to_move, moves_used)` — held authoritatively by the referee, never by a server |
+| **A_i** — actions | 8 directional moves `{N,S,E,W,NE,NW,SE,SW}` for both; the **Cop** additionally has `PLACE_BARRIER` (on its own cell). Illegal moves are filtered by the engine. |
+| **T** — transition | **deterministic**: the Thief moves first, then the Cop; `apply_move` updates `S`. Barriers block both agents and cost the Cop a turn. |
+| **R** — reward | terminal scoring: capture (same cell) ⇒ Cop `+20`, Thief `+5`; survival to `max_moves` ⇒ Thief `+10`, Cop `+5`. |
+| **Ω_i** — observation | per-agent view, **config-selectable**: `blind` (no opponent position — messages are the *only* sensor), `noisy` (reveal radius + quadrant hint), `full` (perfect). Default `noisy`. |
+| **O** — observation fn | `recorders.observe(state, side)` projects `S` to `Ω_i` under the configured mode, emitting stable `sees_opponent` / `opponent_pos` fields. |
+| **h** — horizon | `max_moves = 25` plies per sub-game; `num_games = 6` per series with role-swap. |
+
+**Communication as action.** Beyond the physical action `A_i`, each agent emits a
+**free-text message** every turn — a *cheap-talk* / communication action. Under `blind`
+observation the message channel is the agent's **only** information about the opponent, which
+is exactly what makes "infer the opponent's location and deceive" a real Dec-POMDP problem
+rather than a solved game. Each agent also maintains an explicit **belief** `b_i` (its guess
+of the opponent's cell); we score belief accuracy as the Chebyshev error between the guessed
+and true position (`belief_error`).
