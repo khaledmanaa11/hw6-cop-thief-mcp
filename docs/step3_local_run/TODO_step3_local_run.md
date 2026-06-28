@@ -92,7 +92,8 @@
       **Check:** `pytest -q` green (existing 39 + all new orchestrator tests); no real sockets opened — satisfies R-AC5.
 
 - [x] **E3** — repo root — verify — grep for hard-coded literals and confirm the gate: no `5` / `8001` / `8002` / `127.0.0.1` in `src/orchestrator/`.
-      **Check:** `grep -rnE "8001|8002|127\.0\.0\.1|\b5\b" src/orchestrator/` returns nothing — satisfies R-AC6.
+      **Check:** `grep -rnE "8001|8002|127\.0\.0\.1|\b5\b" s
+      rc/orchestrator/` returns nothing — satisfies R-AC6.
 
 ---
 
